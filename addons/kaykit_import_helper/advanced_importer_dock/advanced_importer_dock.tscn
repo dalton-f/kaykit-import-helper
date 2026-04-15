@@ -2,6 +2,15 @@
 
 [ext_resource type="Script" uid="uid://t8oej848ehll" path="res://addons/kaykit_import_helper/advanced_importer_dock/advanced_importer_dock.gd" id="1_hqwdp"]
 
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_hqwdp"]
+color = Color(0.5019608, 0.5019608, 0.5019608, 0.7529412)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_hqwdp"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+
 [node name="AdvancedImporterDock" type="PanelContainer" unique_id=497867591]
 anchors_preset = 15
 anchor_right = 1.0
@@ -10,8 +19,46 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_hqwdp")
 
-[node name="Button" type="Button" parent="." unique_id=1479434254]
+[node name="MainContainer" type="VBoxContainer" parent="." unique_id=127092788]
+layout_mode = 2
+
+[node name="AdvancedImportSettingsLabel" type="Label" parent="MainContainer" unique_id=890319621]
+layout_mode = 2
+theme_type_variation = &"HeaderLarge"
+text = "Advanced Import Settings"
+
+[node name="HSeparatorA" type="HSeparator" parent="MainContainer" unique_id=338937048]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxLine_hqwdp")
+
+[node name="OptionsLabel" type="Label" parent="MainContainer" unique_id=1642291099]
+layout_mode = 2
+theme_type_variation = &"HeaderMedium"
+text = "Options"
+
+[node name="ExtractMaterialsCheckBox" type="CheckBox" parent="MainContainer" unique_id=657882478]
+layout_mode = 2
+text = "Extract materials as .tres"
+
+[node name="GenerateGridmapCheckBox" type="CheckBox" parent="MainContainer" unique_id=2029215376]
+layout_mode = 2
+text = "Generate gridmap resources"
+
+[node name="HSeparatorB" type="HSeparator" parent="MainContainer" unique_id=1788721477]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxLine_hqwdp")
+
+[node name="SelectedFilesRichTextLabel" type="RichTextLabel" parent="MainContainer" unique_id=1471882333]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/normal = SubResource("StyleBoxEmpty_hqwdp")
+bbcode_enabled = true
+text = "[color=WEB_GRAY]No Selected File / Directory[/color]"
+
+[node name="ReimportButton" type="Button" parent="MainContainer" unique_id=1479434254]
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 8
 text = "Reimport"
+
+[connection signal="pressed" from="MainContainer/ReimportButton" to="." method="_on_reimport_button_pressed"]
