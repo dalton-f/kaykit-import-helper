@@ -164,4 +164,16 @@ func _get_files(directory_path: String, extensions: Array = [], scan_subfolders:
 	directory.list_dir_end()
 
 	return results
+
+# Makes a directory if it doesn't already exist
+func _make_dir(path: String) -> void:
+	# If directory already exists, do nothing
+	if DirAccess.dir_exists_absolute(path):
+		return
+
+	var err := DirAccess.make_dir_recursive_absolute(path)
+
+	if err != OK:
+		push_error("✗ [KayKit Import Helper] Failed to create directory: %s" % path)
+		return 
 #endregion
