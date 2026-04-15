@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://tscmwy1wiedv"]
+
+[ext_resource type="Script" uid="uid://t8oej848ehll" path="res://addons/kaykit_import_helper/advanced_importer_dock/advanced_importer_dock.gd" id="1_hqwdp"]
+
+[node name="AdvancedImporterDock" type="PanelContainer" unique_id=497867591]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_hqwdp")
+
+[node name="Button" type="Button" parent="." unique_id=1479434254]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+text = "Reimport"
