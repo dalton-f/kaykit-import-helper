@@ -22,6 +22,8 @@ const SELECTED_FILES_DEFAULT_TEXT: String = "[color=WEB_GRAY]No Selected File / 
 var dock
 # A class member to hold the instantiated dock scene during the plugin life cycle.
 var dock_scene
+
+var extracted_materials: Dictionary = {}
 #endregion
 
 #region Virtual Methods
@@ -135,7 +137,19 @@ func _reset_dock_state() -> void:
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
 
+	# Build the output directories if they don't already exist
 	await _build_output_directories()
+	
+	var selected_folder_paths: Array = _get_selected_folders()
+	
+	# Loop over each selected folder to process them individually
+	for selected_folder_path: String in selected_folder_paths:
+		var texture_paths: Array = _get_files(selected_folder_path, ["png"])
+		var model_paths: Array = _get_files(selected_folder_path, ["gltf"])
+		
+		# Skip the full folder if it only includes valid texture paths or valid model paths instead of both
+		if texture_paths.is_empty() or model_paths.is_empty():
+			continue
 	
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
@@ -148,6 +162,83 @@ func _build_output_directories() -> void:
 	await _refresh_filesystem()
 	
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Built output directories successfully [/color]")
+
+#region Material Extraction & Replacement
+func _extract_materials_from_file(file_path: String) -> void:
+	var mesh_instance_list: Array[MeshInstance3D] = _get_mesh_instances_from_scene(file_path)
+
+	if mesh_instance_list.size() == 0:
+		push_error("✗ [KayKit Import Helper] Failed to find any mesh instances in %s" % file_path)
+		return
+
+	for mesh_instance: MeshInstance3D in mesh_instance_list:
+		var mesh: Mesh = mesh_instance.mesh
+
+		if !is_instance_valid(mesh):
+			continue
+
+		for idx: int in range(mesh.get_surface_count()):
+			var material: Material = mesh.surface_get_material(idx).duplicate(true) as Material
+
+			if !is_instance_valid(material):
+				material = null
+				continue
+
+			if !extracted_materials.has(material.resource_name):
+				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH, material.resource_name]
+
+				if !FileAccess.file_exists(material_path):
+					ResourceSaver.save(material, material_path)
+
+				extracted_materials[material.resource_name] = material_path
+
+			material = null
+
+func _get_mesh_instances_from_scene(file_path: String) -> Array[MeshInstance3D]:
+	var packed_scene: PackedScene = ResourceLoader.load(
+		file_path,
+		"",
+		ResourceLoader.CacheMode.CACHE_MODE_IGNORE_DEEP,
+	) as PackedScene
+
+	if !is_instance_valid(packed_scene):
+		return []
+
+	var node_instance: Node = packed_scene.instantiate()
+
+	if !is_instance_valid(node_instance):
+		return []
+
+	var mesh_list: Array[MeshInstance3D] = []
+
+	for node: Node in node_instance.find_children("*", "MeshInstance3D", true, true):
+		if node is MeshInstance3D:
+			mesh_list.append(node as MeshInstance3D)
+
+	return mesh_list
+
+func _replace_materials_from_file(file_path: String) -> void:
+	var import_path: String = "%s.import" % [file_path]
+	var import_file: ConfigFile = _open_import_file(import_path)
+
+	var subresources: Dictionary = import_file.get_value(
+		"params",
+		"_subresources",
+		{ },
+	) as Dictionary
+
+	if !subresources.has("materials"):
+		subresources["materials"] = { }
+
+	for material_name: String in extracted_materials.keys() as Array[String]:
+		subresources["materials"][material_name] = {
+			"use_external/enabled": true,
+			"use_external/path": extracted_materials[material_name],
+		}
+
+	import_file.set_value("params", "_subresources", subresources)
+	import_file.save(import_path)
+#endregion
 
 #region Utility Functions
 # Refreshes the Godot editor filesystem
