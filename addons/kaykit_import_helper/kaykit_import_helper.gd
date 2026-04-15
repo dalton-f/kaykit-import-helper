@@ -27,13 +27,16 @@ var dock_scene
 func _enter_tree():
 	_build_dock()
 	
-	dock_scene.connect("reimport_requested", _handle_reimport_request)
+	_connect_signals()
 
 # Clean-up of the plugin goes here.
 func _exit_tree():
+	_disconnect_signals()
+		
 	_erase_dock()
 #endregion
 
+#region Plugin Lifecycle
 func _build_dock() -> void:
 	# Load the dock scene and instantiate it.
 	dock_scene = preload(PLUGIN_DOCK_SCENE_PATH).instantiate()
@@ -62,10 +65,30 @@ func _erase_dock() -> void:
 	
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Dock erased successfully[/color]")
 
+func _connect_signals() -> void:
+	dock_scene.connect("reimport_requested", _handle_reimport_request)
+	
+	EditorInterface.get_file_system_dock().connect("selection_changed", _update_dock_state)
+	
+	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Signals connected successfully[/color]")
+
+func _disconnect_signals() -> void:
+	dock_scene.disconnect("reimport_requested", _handle_reimport_request)
+	
+	EditorInterface.get_file_system_dock().disconnect("selection_changed", _update_dock_state)
+	
+	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Signals disconnected successfully[/color]")
+
+func _update_dock_state() -> void:
+	pass
+#endregion
+
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
 
 	await _build_output_directories()
+	
+	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
 func _build_output_directories() -> void:
 	var output_directory_paths = [MATERIALS_OUTPUT_DIRECTORY_PATH, TEXTURES_OUTPUT_DIRECTORY_PATH, MODELS_OUTPUT_DIRECTORY_PATH]
@@ -76,7 +99,6 @@ func _build_output_directories() -> void:
 	await _refresh_filesystem()
 	
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Built output directories successfully [/color]")
-
 
 #region Utility Functions
 # Refreshes the Godot editor filesystem
