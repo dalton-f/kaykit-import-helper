@@ -59,6 +59,7 @@ text = "[color=WEB_GRAY]No Selected File / Directory[/color]"
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 8
+disabled = true
 text = "Reimport"
 
 [connection signal="pressed" from="MainContainer/ReimportButton" to="." method="_on_reimport_button_pressed"]

@@ -13,6 +13,8 @@ const BASE_OUTPUT_DIRECTORY_PATH: String = "res://assets/"
 const MATERIALS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "materials/"
 const TEXTURES_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "textures/"
 const MODELS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "models/"
+
+const SELECTED_FILES_DEFAULT_TEXT: String = "[color=WEB_GRAY]No Selected File / Directory[/color]"
 #endregion
 
 #region Variables
@@ -79,8 +81,55 @@ func _disconnect_signals() -> void:
 	
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Signals disconnected successfully[/color]")
 
+# Updates the dock UI based on currently selected folders and their valid files
 func _update_dock_state() -> void:
-	pass
+	# Get all selected folder paths
+	var selected_folder_paths: Array = _get_selected_folders()
+	
+	# If no folders are selected, reset the dock and exit early
+	if selected_folder_paths.is_empty():
+		_reset_dock_state()
+		return
+	
+	# This will store all valid files found in selected folders
+	var selected_file_paths: Array = []
+	
+	# Loop through each selected folder
+	for selected_folder_path: String in selected_folder_paths:
+		# Get files with allowed extensions (png and gltf)
+		var valid_file_paths: Array = _get_files(selected_folder_path, ["png", "gltf"])
+		
+		# Add those files to the main list
+		selected_file_paths.append_array(valid_file_paths)
+	
+	# If no valid files were found, reset the dock and exit early
+	if selected_file_paths.is_empty():
+		_reset_dock_state()
+		return
+	
+	# Create a separator for displaying files (newline + bullet point)
+	var file_display_seperator: String = "\n%c " % [8226]
+	
+	# Update the UI label with:
+	# - number of selected files
+	# - correct singular/plural wording
+	# - formatted list of file paths
+	dock_scene.selected_files_rich_text_label.text = "[b]%d[/b] %s:%s%s" % [
+		selected_file_paths.size(),
+		"Selected File" if selected_file_paths.size() == 1 else "Selected Files",
+		file_display_seperator,
+		file_display_seperator.join(selected_file_paths)
+	]
+	
+	# Enable the reimport button since there are some valid files
+	dock_scene.reimport_button.disabled = false
+	
+# Resets the dock UI to its default state
+func _reset_dock_state() -> void:
+	# Disable the reimport button since there are no valid files
+	dock_scene.reimport_button.disabled = true
+	# Reset the label text to its default placeholder
+	dock_scene.selected_files_rich_text_label.text = SELECTED_FILES_DEFAULT_TEXT
 #endregion
 
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
