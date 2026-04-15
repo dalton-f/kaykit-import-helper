@@ -2,6 +2,9 @@
 extends EditorPlugin
 
 #region Constants
+const PLUGIN_DIRECTORY_PATH: String = "res://addons/kaykit_import_helper/"
+const PLUGIN_DOCK_SCENE_PATH: String = PLUGIN_DIRECTORY_PATH + "advanced_importer_dock/advanced_importer_dock.tscn"
+
 const AVAILABLE_DOCK_LAYOUTS: int = EditorDock.DockLayout.DOCK_LAYOUT_VERTICAL | EditorDock.DockLayout.DOCK_LAYOUT_FLOATING
 const DEFAULT_DOCK_SLOT: EditorDock.DockSlot = EditorDock.DockSlot.DOCK_SLOT_LEFT_UR
 const DEFAULT_DOCK_TITLE: String = "Advanced Import"
@@ -28,7 +31,7 @@ func _exit_tree():
 
 func _build_dock() -> void:
 	# Load the dock scene and instantiate it.
-	dock_scene = preload("res://addons/kaykit_import_helper/advanced_importer_dock/advanced_importer_dock.tscn").instantiate()
+	dock_scene = preload(PLUGIN_DOCK_SCENE_PATH).instantiate()
 
 	# Create the dock and add the loaded scene to it.
 	dock = EditorDock.new()
