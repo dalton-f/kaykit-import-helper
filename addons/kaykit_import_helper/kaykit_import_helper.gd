@@ -8,6 +8,11 @@ const PLUGIN_DOCK_SCENE_PATH: String = PLUGIN_DIRECTORY_PATH + "advanced_importe
 const AVAILABLE_DOCK_LAYOUTS: int = EditorDock.DockLayout.DOCK_LAYOUT_VERTICAL | EditorDock.DockLayout.DOCK_LAYOUT_FLOATING
 const DEFAULT_DOCK_SLOT: EditorDock.DockSlot = EditorDock.DockSlot.DOCK_SLOT_LEFT_UR
 const DEFAULT_DOCK_TITLE: String = "Advanced Import"
+
+const BASE_OUTPUT_DIRECTORY_PATH: String = "res://assets/"
+const MATERIALS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "materials/"
+const TEXTURES_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "textures/"
+const MODELS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "models/"
 #endregion
 
 #region Variables
@@ -59,6 +64,19 @@ func _erase_dock() -> void:
 
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
+
+	await _build_output_directories()
+
+func _build_output_directories() -> void:
+	var output_directory_paths = [MATERIALS_OUTPUT_DIRECTORY_PATH, TEXTURES_OUTPUT_DIRECTORY_PATH, MODELS_OUTPUT_DIRECTORY_PATH]
+
+	for output_directory_path: String in output_directory_paths:
+		_make_dir(output_directory_path)
+	
+	await _refresh_filesystem()
+	
+	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Built output directories successfully [/color]")
+
 
 #region Utility Functions
 # Refreshes the Godot editor filesystem
