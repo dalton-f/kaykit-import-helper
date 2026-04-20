@@ -59,7 +59,7 @@ func _build_dock() -> void:
 
 	add_dock(dock)
 	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Dock initialized successfully[/color]")
+	print_rich("[color=green][b][KayKit Import Helper][/b] Dock initialized successfully[/color]")
 
 func _erase_dock() -> void:
 	# Remove the dock.
@@ -67,21 +67,21 @@ func _erase_dock() -> void:
 	# Erase the control from the memory.
 	dock.queue_free()
 	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Dock erased successfully[/color]")
+	print_rich("[color=green][b][KayKit Import Helper][/b] Dock erased successfully[/color]")
 
 func _connect_signals() -> void:
 	dock_scene.connect("reimport_requested", _handle_reimport_request)
 	
 	EditorInterface.get_file_system_dock().connect("selection_changed", _update_dock_state)
 	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Signals connected successfully[/color]")
+	print_rich("[color=green][b][KayKit Import Helper][/b] Signals connected successfully[/color]")
 
 func _disconnect_signals() -> void:
 	dock_scene.disconnect("reimport_requested", _handle_reimport_request)
 	
 	EditorInterface.get_file_system_dock().disconnect("selection_changed", _update_dock_state)
 	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Signals disconnected successfully[/color]")
+	print_rich("[color=green][b][KayKit Import Helper][/b] Signals disconnected successfully[/color]")
 
 # Updates the dock UI based on currently selected folders and their valid files
 func _update_dock_state() -> void:
@@ -135,7 +135,7 @@ func _reset_dock_state() -> void:
 #endregion
 
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
+	print_rich("[color=green][b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
 
 	# Build the output directories if they don't already exist
 	await _build_output_directories()
@@ -143,15 +143,34 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	var selected_folder_paths: Array = _get_selected_folders()
 	
 	# Loop over each selected folder to process them individually
-	for selected_folder_path: String in selected_folder_paths:
+	for selected_folder_path in selected_folder_paths:		
 		var texture_paths: Array = _get_files(selected_folder_path, ["png"])
 		var model_paths: Array = _get_files(selected_folder_path, ["gltf"])
-		
+	
 		# Skip the full folder if it only includes valid texture paths or valid model paths instead of both
 		if texture_paths.is_empty() or model_paths.is_empty():
+			push_warning("[KayKit Import Helper] Skipped (missing textures or models): %s[/color]" % selected_folder_path)
 			continue
-	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
+		
+		
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Extracting Materials ---[/color]\n")
+		_extract_materials(model_paths)
+
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Replacing Materials ---[/color]\n")
+		await _replace_materials(model_paths)
+		
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Textures ---[/color]\n")
+		await _move_textures(texture_paths)
+		
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Fixing GLTF Texture URIs ---[/color]\n")
+		_fix_gltf_texture_uris(model_paths)
+		
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Models ---[/color]\n")
+		await _move_models(model_paths)
+		
+		await _refresh_filesystem()
+		
+	print_rich("\n[color=green][b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
 func _build_output_directories() -> void:
 	var output_directory_paths = [MATERIALS_OUTPUT_DIRECTORY_PATH, TEXTURES_OUTPUT_DIRECTORY_PATH, MODELS_OUTPUT_DIRECTORY_PATH]
@@ -161,14 +180,102 @@ func _build_output_directories() -> void:
 	
 	await _refresh_filesystem()
 	
-	print_rich("[color=green]✓ [b][KayKit Import Helper][/b] Built output directories successfully [/color]")
+	print_rich("[color=green][b][KayKit Import Helper][/b] Built output directories successfully [/color]")
 
+# Extracts materials from a list of model files.
+# For each path provided, it processes the file and stores
+# any found materials into the `extracted_materials` dictionary.
+func _extract_materials(model_paths: Array) -> void:
+	# Reset previously stored materials
+	extracted_materials.clear() 
+	
+	# Loop through all model paths by index
+	for idx in model_paths.size():
+		var model_path: String = model_paths[idx]
+		
+		# Extract materials from the current file
+		_extract_materials_from_file(model_path)
+		
+		# Log progress with current index and total count
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully extracted materials from %s [/color]" % [idx + 1, model_paths.size(), model_path])
+
+# Replaces materials in a list of model files.
+# After processing each file, it refreshes the filesystem and reimports assets.
+func _replace_materials(model_paths: Array) -> void:
+	# Loop through all model paths by index
+	for idx in model_paths.size():
+		var model_path: String = model_paths[idx]
+		
+		# Replace materials in the current file
+		_replace_materials_from_file(model_path)
+		
+		# Wait for filesystem refresh and reimport to complete
+		await _refresh_filesystem_and_imports()
+		
+		# Log progress
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully replaced materials of %s [/color]" % [idx + 1, model_paths.size(), model_path])
+
+# Moves texture files and their corresponding .import files
+func _move_textures(texture_paths: Array) -> void:
+	await _move_files(texture_paths, TEXTURES_OUTPUT_DIRECTORY_PATH, true)
+
+func _fix_gltf_texture_uris(model_paths: Array) -> void:
+	for idx in model_paths.size():
+		var model_path: String = model_paths[idx]
+		
+		# Open file for reading
+		var file: FileAccess = FileAccess.open(model_path, FileAccess.READ)
+		
+		# If file can't be opened, log error and skip to next file
+		if file == null:
+			push_error("[KayKit Import Helper] Failed to open file %s" % model_path)
+			continue
+			
+		# Read entire file as text
+		var content: String = file.get_as_text()
+		file.close()
+			
+		# Parse JSON content
+		var json: Variant = JSON.parse_string(content)
+			
+		# Ensure parsed data is a dictionary
+		if typeof(json) != TYPE_DICTIONARY:
+			push_error("[KayKit Import Helper] File %s has invalid JSON contents" % model_path)
+			continue
+			
+		if json.has("images"):
+			for img in json["images"]:
+				if img.has("uri"):
+					var filename = img["uri"].get_file()
+					img["uri"] = "../textures/" + filename
+			
+		# Convert modified JSON back to formatted string        
+		var new_text: String = JSON.stringify(json, "\t")
+		# Open file for writing (overwrite existing content)
+		var out: FileAccess = FileAccess.open(model_path, FileAccess.WRITE)
+			
+		# If file can't be opened for writing, log error and skip
+		if out == null:
+			push_error("[KayKit Import Helper] Failed to write file %s" % model_path)
+			continue
+		
+		# Save updated JSON back to file
+		out.store_string(new_text)
+		out.close()
+		
+		print_rich("[color=green][b][KayKit Import Helper][/b] [s%d/%d] Successfully updated GLTF URIs of %s[/color]" % [idx + 1, model_paths.size(), model_path])
+
+# Moves texture files and their corresponding .import and .bin files
+func _move_models(model_paths: Array) -> void:
+	# _move_files has three booleans, include .import (true), include .bin (true) and trigger filesystem refresh (false)
+	await _move_files(model_paths, MODELS_OUTPUT_DIRECTORY_PATH, true, true, false)
+	
 #region Material Extraction & Replacement
 func _extract_materials_from_file(file_path: String) -> void:
 	var mesh_instance_list: Array[MeshInstance3D] = _get_mesh_instances_from_scene(file_path)
 
 	if mesh_instance_list.size() == 0:
-		push_error("✗ [KayKit Import Helper] Failed to find any mesh instances in %s" % file_path)
+		push_error("[KayKit Import Helper] Failed to find any mesh instances in %s" % file_path)
 		return
 
 	for mesh_instance: MeshInstance3D in mesh_instance_list:
@@ -301,7 +408,7 @@ func _open_import_file(import_file_path: String) -> ConfigFile:
 
 	# Handle loading failure
 	if error != Error.OK:
-		push_error("✗ [KayKit Import Helper] Failed to open import file: %s" % import_file_path)
+		push_error("[KayKit Import Helper] Failed to open import file: %s" % import_file_path)
 		return null
 
 	return import_file
@@ -316,7 +423,7 @@ func _get_files(directory_path: String, extensions: Array = [], scan_subfolders:
 	
 	# If directory can't be opened, return empty list
 	if directory == null:
-		push_error("✗ [KayKit Import Helper] Failed to open directory: %s" % directory_path)
+		push_error("[KayKit Import Helper] Failed to open directory: %s" % directory_path)
 		return results
 		
 	# Initalize the stream used to list all files and folders using get_next()
@@ -357,6 +464,52 @@ func _make_dir(path: String) -> void:
 	var err := DirAccess.make_dir_recursive_absolute(path)
 
 	if err != OK:
-		push_error("✗ [KayKit Import Helper] Failed to create directory: %s" % path)
+		push_error("[KayKit Import Helper] Failed to create directory: %s" % path)
 		return 
+
+func _move_files(file_paths: Array, target_dir: String, move_import: bool = false, move_bin: bool = false, trigger_filesystem_refresh: bool = true) -> void:
+	for idx in file_paths.size():
+		var file_path: String = file_paths[idx]
+		
+		if not FileAccess.file_exists(file_path):
+			push_warning("[KayKit Import Helper] File does not exist: %s" % file_path)
+			continue
+
+		var file_name = file_path.get_file()
+		var new_file_path: String = target_dir.path_join(file_name)
+
+		# Move main file
+		var err: Error = DirAccess.rename_absolute(file_path, new_file_path)
+		
+		if err != Error.OK:
+			push_error("[KayKit Import Helper] Failed to move file: %s → %s" % [file_path, new_file_path])
+			continue
+
+		# Optionally move .bin file for .gtlfs
+		if move_bin:
+			var bin_path: String = file_path.replace(".gltf", ".bin")
+			
+			if FileAccess.file_exists(bin_path):
+				var new_bin_path: String = target_dir.path_join(bin_path.get_file())
+				var bin_err: Error = DirAccess.rename_absolute(bin_path, new_bin_path)
+				
+				if bin_err != Error.OK:
+					push_warning("[KayKit Import Helper] Failed to move bin file: %s" % bin_path)
+			
+		# Optionally move .import file (Godot-specific)
+		if move_import:
+			var import_path: String = "%s.import" % [file_path]
+			
+			if FileAccess.file_exists(import_path):
+				var new_import_path: String = target_dir.path_join(import_path.get_file())
+				var import_err: Error = DirAccess.rename_absolute(import_path, new_import_path)
+				
+				if import_err != Error.OK:
+					push_warning("[KayKit Import Helper] Failed to move import file: %s" % import_path)
+		
+		if trigger_filesystem_refresh:
+			# Refresh filesystem so Godot detects moved assets
+			await _refresh_filesystem()
+		
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully moved file %s → %s[/color]" % [idx + 1, file_paths.size(), file_path, new_file_path])
 #endregion
