@@ -3,7 +3,6 @@ extends PanelContainer
 
 signal reimport_requested(settings: Dictionary[String, bool])
 
-@onready var extract_materials_check_box: CheckBox = $MainContainer/ExtractMaterialsCheckBox
 @onready var generate_gridmap_check_box: CheckBox = $MainContainer/GenerateGridmapCheckBox
 @onready var reimport_button: Button = $MainContainer/ReimportButton
 @onready var selected_files_rich_text_label: RichTextLabel = $MainContainer/SelectedFilesRichTextLabel
@@ -27,7 +26,6 @@ func _apply_button_icon() -> void:
 # Build a single settings object
 func _get_settings() -> Dictionary[String, bool]:
 	return {
-		"extract_materials": extract_materials_check_box.button_pressed,
 		"generate_gridmap": generate_gridmap_check_box.button_pressed
 	}
 
