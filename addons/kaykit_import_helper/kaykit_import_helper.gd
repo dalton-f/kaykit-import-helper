@@ -137,13 +137,15 @@ func _reset_dock_state() -> void:
 func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	print_rich("[color=green][b][KayKit Import Helper][/b] Reimport requested with settings: %s [/color]" % settings)
 
+	var selected_folder_paths: Array[String] = _get_selected_folders()
+
 	# Build the output directories if they don't already exist
-	await _build_output_directories()
-	
-	var selected_folder_paths: Array = _get_selected_folders()
+	await _build_output_directories(selected_folder_paths)
 	
 	# Loop over each selected folder to process them individually
-	for selected_folder_path in selected_folder_paths:		
+	for selected_folder_path in selected_folder_paths:
+		var pack_name: String = selected_folder_path.trim_suffix("/").get_file() + "/"
+		
 		var texture_paths: Array = _get_files(selected_folder_path, ["png"])
 		var model_paths: Array = _get_files(selected_folder_path, ["gltf"])
 	
@@ -152,31 +154,38 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 			push_warning("[KayKit Import Helper] Skipped (missing textures or models): %s[/color]" % selected_folder_path)
 			continue
 		
-		
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Extracting Materials ---[/color]\n")
-		_extract_materials(model_paths)
+		_extract_materials(model_paths, pack_name)
 
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Replacing Materials ---[/color]\n")
 		await _replace_materials(model_paths)
 		
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Textures ---[/color]\n")
-		await _move_textures(texture_paths)
+		await _move_textures(texture_paths, pack_name)
 		
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Fixing GLTF Texture URIs ---[/color]\n")
-		_fix_gltf_texture_uris(model_paths)
+		_fix_gltf_texture_uris(model_paths, pack_name)
 		
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Models ---[/color]\n")
-		await _move_models(model_paths)
-		
-		await _refresh_filesystem()
+		_move_models(model_paths, pack_name)
+			
+	await _refresh_filesystem()	
 		
 	print_rich("\n[color=green][b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
-func _build_output_directories() -> void:
-	var output_directory_paths = [MATERIALS_OUTPUT_DIRECTORY_PATH, TEXTURES_OUTPUT_DIRECTORY_PATH, MODELS_OUTPUT_DIRECTORY_PATH]
+func _build_output_directories(selected_folder_paths: Array[String]) -> void:
+	var base_directories = [
+		MATERIALS_OUTPUT_DIRECTORY_PATH,
+		TEXTURES_OUTPUT_DIRECTORY_PATH,
+		MODELS_OUTPUT_DIRECTORY_PATH
+	]
 
-	for output_directory_path: String in output_directory_paths:
-		_make_dir(output_directory_path)
+	for base_dir in base_directories:
+		for folder_path in selected_folder_paths:
+			var pack_name: String = folder_path.trim_suffix("/").get_file()
+			var sub_dir: String = base_dir.path_join(pack_name)
+			
+			_make_dir(sub_dir)
 	
 	await _refresh_filesystem()
 	
@@ -185,7 +194,7 @@ func _build_output_directories() -> void:
 # Extracts materials from a list of model files.
 # For each path provided, it processes the file and stores
 # any found materials into the `extracted_materials` dictionary.
-func _extract_materials(model_paths: Array) -> void:
+func _extract_materials(model_paths: Array, pack_name: String) -> void:
 	# Reset previously stored materials
 	extracted_materials.clear() 
 	
@@ -194,7 +203,7 @@ func _extract_materials(model_paths: Array) -> void:
 		var model_path: String = model_paths[idx]
 		
 		# Extract materials from the current file
-		_extract_materials_from_file(model_path)
+		_extract_materials_from_file(model_path, pack_name)
 		
 		# Log progress with current index and total count
 		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully extracted materials from %s [/color]" % [idx + 1, model_paths.size(), model_path])
@@ -216,10 +225,10 @@ func _replace_materials(model_paths: Array) -> void:
 		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully replaced materials of %s [/color]" % [idx + 1, model_paths.size(), model_path])
 
 # Moves texture files and their corresponding .import files
-func _move_textures(texture_paths: Array) -> void:
-	await _move_files(texture_paths, TEXTURES_OUTPUT_DIRECTORY_PATH, true)
+func _move_textures(texture_paths: Array, pack_name: String) -> void:
+	await _move_files(texture_paths, TEXTURES_OUTPUT_DIRECTORY_PATH.path_join(pack_name), true)
 
-func _fix_gltf_texture_uris(model_paths: Array) -> void:
+func _fix_gltf_texture_uris(model_paths: Array, pack_name: String) -> void:
 	for idx in model_paths.size():
 		var model_path: String = model_paths[idx]
 		
@@ -247,7 +256,8 @@ func _fix_gltf_texture_uris(model_paths: Array) -> void:
 			for img in json["images"]:
 				if img.has("uri"):
 					var filename = img["uri"].get_file()
-					img["uri"] = "../textures/" + filename
+					# Rebuild the image path to point to the correct texture within the selected asset pack
+					img["uri"] = "../../textures/" + pack_name + filename
 			
 		# Convert modified JSON back to formatted string        
 		var new_text: String = JSON.stringify(json, "\t")
@@ -263,15 +273,15 @@ func _fix_gltf_texture_uris(model_paths: Array) -> void:
 		out.store_string(new_text)
 		out.close()
 		
-		print_rich("[color=green][b][KayKit Import Helper][/b] [s%d/%d] Successfully updated GLTF URIs of %s[/color]" % [idx + 1, model_paths.size(), model_path])
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully updated gltf uris of %s[/color]" % [idx + 1, model_paths.size(), model_path])
 
 # Moves texture files and their corresponding .import and .bin files
-func _move_models(model_paths: Array) -> void:
+func _move_models(model_paths: Array, pack_name: String) -> void:
 	# _move_files has three booleans, include .import (true), include .bin (true) and trigger filesystem refresh (false)
-	await _move_files(model_paths, MODELS_OUTPUT_DIRECTORY_PATH, true, true, false)
+	_move_files(model_paths, MODELS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), true, true, false)
 	
 #region Material Extraction & Replacement
-func _extract_materials_from_file(file_path: String) -> void:
+func _extract_materials_from_file(file_path: String, pack_name: String) -> void:
 	var mesh_instance_list: Array[MeshInstance3D] = _get_mesh_instances_from_scene(file_path)
 
 	if mesh_instance_list.size() == 0:
@@ -292,7 +302,7 @@ func _extract_materials_from_file(file_path: String) -> void:
 				continue
 
 			if !extracted_materials.has(material.resource_name):
-				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH, material.resource_name]
+				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), material.resource_name]
 
 				if !FileAccess.file_exists(material_path):
 					ResourceSaver.save(material, material_path)
@@ -388,8 +398,8 @@ func _refresh_filesystem_and_imports() -> void:
 	await get_tree().process_frame
 
 # Returns only selected paths that are valid folders
-func _get_selected_folders() -> Array:
-	var folders: Array = []
+func _get_selected_folders() -> Array[String]:
+	var folders: Array[String] = []
 	
 	var selected_paths: PackedStringArray = EditorInterface.get_selected_paths()
 	
