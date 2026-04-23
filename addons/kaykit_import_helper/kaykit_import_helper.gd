@@ -13,6 +13,7 @@ const BASE_OUTPUT_DIRECTORY_PATH: String = "res://assets/"
 const MATERIALS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "materials/"
 const TEXTURES_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "textures/"
 const MODELS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "models/"
+const MESH_LIBS_OUTPUT_DIRECTORY_PATH: String = BASE_OUTPUT_DIRECTORY_PATH + "mesh_libs/"
 
 const SELECTED_FILES_DEFAULT_TEXT: String = "[color=WEB_GRAY]No Selected File / Directory[/color]"
 #endregion
@@ -169,10 +170,14 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Models ---[/color]\n")
 		_move_models(model_paths, pack_name)
 		
+		if settings.generate_gridmap:
+			print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Gridmap Generation ---[/color]\n")
+			_generate_gridmap_resources(pack_name)
+		
 		# Remove the selected folder path (cleans up filesystem after processing files)
 		DirAccess.remove_absolute(selected_folder_path)
 			
-	await _refresh_filesystem()	
+	await _refresh_filesystem()
 		
 	print_rich("\n[color=green][b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
@@ -181,7 +186,8 @@ func _build_output_directories(selected_folder_paths: Array[String]) -> void:
 	var base_directories = [
 		MATERIALS_OUTPUT_DIRECTORY_PATH,
 		TEXTURES_OUTPUT_DIRECTORY_PATH,
-		MODELS_OUTPUT_DIRECTORY_PATH
+		MODELS_OUTPUT_DIRECTORY_PATH,
+		MESH_LIBS_OUTPUT_DIRECTORY_PATH
 	]
 
 	# Loop through each base directory
@@ -209,7 +215,7 @@ func _extract_materials(model_paths: Array, pack_name: String) -> void:
 	extracted_materials.clear() 
 	
 	# Loop through all model paths by index
-	for idx in model_paths.size():
+	for idx: int in model_paths.size():
 		var model_path: String = model_paths[idx]
 		
 		# Extract materials from the current file
@@ -222,7 +228,7 @@ func _extract_materials(model_paths: Array, pack_name: String) -> void:
 # After processing each file, it refreshes the filesystem and reimports assets.
 func _replace_materials(model_paths: Array) -> void:
 	# Loop through all model paths by index
-	for idx in model_paths.size():
+	for idx: int in model_paths.size():
 		var model_path: String = model_paths[idx]
 		
 		# Replace materials in the current file
@@ -239,7 +245,7 @@ func _move_textures(texture_paths: Array, pack_name: String) -> void:
 	await _move_files(texture_paths, TEXTURES_OUTPUT_DIRECTORY_PATH.path_join(pack_name), true)
 
 func _fix_gltf_texture_uris(model_paths: Array, pack_name: String) -> void:
-	for idx in model_paths.size():
+	for idx: int in model_paths.size():
 		var model_path: String = model_paths[idx]
 		
 		# Open file for reading
@@ -289,7 +295,80 @@ func _fix_gltf_texture_uris(model_paths: Array, pack_name: String) -> void:
 func _move_models(model_paths: Array, pack_name: String) -> void:
 	# _move_files has three booleans, include .import (true), include .bin (true) and trigger filesystem refresh (false)
 	_move_files(model_paths, MODELS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), true, true, false)
+
+func _generate_gridmap_resources(pack_name: String) -> void:
+	var new_model_paths = _get_files(MODELS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), ["gltf"])
 	
+	# Ensure that the placement of the models is in an equal square grid depending on the amount of assets
+	var model_count = new_model_paths.size()
+	var columns: int = int(ceil(sqrt(model_count)))
+	var rows: int = int(ceil(model_count / float(columns)))
+	
+	var spacing: float = 8.0
+	
+	# Generate the root node for a scene
+	var root := Node3D.new()
+	root.name = pack_name.trim_suffix("/").to_pascal_case()
+	
+	for idx: int in model_count:
+		var model_path: String = new_model_paths[idx]
+		var scene: Resource = load(model_path)
+		
+		if scene == null:
+			push_error("[KayKit Import Helper] Failed to load: %s" % model_path)
+			continue
+			
+		if not scene is PackedScene:
+			push_error("[KayKit Import Helper] Not a PackedScene: %s" % model_path)
+			continue
+			
+		var instance = scene.instantiate()
+			
+		if instance == null:
+			push_error("[KayKit Import Helper] Failed to instantiate: %s" % model_path)
+			continue
+		
+		instance.name = "Instance_%d" % idx
+			
+		root.add_child(instance)
+		instance.owner = root
+			
+		var child = instance.get_child(0)
+		
+		# Detach child from instance
+		instance.remove_child(child)
+		child.owner = null
+			
+		# Add child directly to your root
+		root.add_child(child)
+		child.owner = root
+		
+		var x = idx % columns
+		var z = idx / columns
+		
+		# Position each child into the grid correctly
+		child.position = Vector3(x * spacing, 0, z * spacing)
+		# Fix naming conventions
+		child.name = child.name.to_pascal_case()
+		
+		# Generate collisions
+		child.create_convex_collision()
+		
+		# Remove the original root node
+		instance.owner = null
+		instance.queue_free()
+		
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully placed %s into a scene [/color]" % [idx + 1, new_model_paths.size(), model_path])
+	
+	# Pack the placed nodes into a proper scene
+	var packed := PackedScene.new()
+	packed.pack(root)
+	
+	# Save the packed scene
+	var clean_pack_name = pack_name.trim_suffix("/")
+	var save_path: String = MESH_LIBS_OUTPUT_DIRECTORY_PATH.path_join(pack_name) + clean_pack_name + ".tscn"
+	ResourceSaver.save(packed, save_path)
+
 #region Material Extraction & Replacement
 # Extracts all materials from meshes in a scene file and saves them as external resources.
 func _extract_materials_from_file(file_path: String, pack_name: String) -> void:
