@@ -168,11 +168,15 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 		
 		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Moving Models ---[/color]\n")
 		_move_models(model_paths, pack_name)
+		
+		# Remove the selected folder path (cleans up filesystem after processing files)
+		DirAccess.remove_absolute(selected_folder_path)
 			
 	await _refresh_filesystem()	
 		
 	print_rich("\n[color=green][b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
+# Creates output directory structure for selected asset folders.
 func _build_output_directories(selected_folder_paths: Array[String]) -> void:
 	var base_directories = [
 		MATERIALS_OUTPUT_DIRECTORY_PATH,
@@ -180,13 +184,19 @@ func _build_output_directories(selected_folder_paths: Array[String]) -> void:
 		MODELS_OUTPUT_DIRECTORY_PATH
 	]
 
+	# Loop through each base directory
 	for base_dir in base_directories:
+		# Loop through each selected folder path
 		for folder_path in selected_folder_paths:
+			# Extract the folder name (used as pack name)
 			var pack_name: String = folder_path.trim_suffix("/").get_file()
+			# Build the full subdirectory path (e.g. materials/pack_name)
 			var sub_dir: String = base_dir.path_join(pack_name)
 			
+			# Create the directory if it doesn't exist
 			_make_dir(sub_dir)
-	
+			
+	# Refresh the filesystem so the editor recognizes new folders
 	await _refresh_filesystem()
 	
 	print_rich("[color=green][b][KayKit Import Helper][/b] Built output directories successfully [/color]")
@@ -281,63 +291,83 @@ func _move_models(model_paths: Array, pack_name: String) -> void:
 	_move_files(model_paths, MODELS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), true, true, false)
 	
 #region Material Extraction & Replacement
+# Extracts all materials from meshes in a scene file and saves them as external resources.
 func _extract_materials_from_file(file_path: String, pack_name: String) -> void:
+	# Get all MeshInstance3D nodes from the scene
 	var mesh_instance_list: Array[MeshInstance3D] = _get_mesh_instances_from_scene(file_path)
 
+	# If no meshes were found, log an error and stop
 	if mesh_instance_list.size() == 0:
 		push_error("[KayKit Import Helper] Failed to find any mesh instances in %s" % file_path)
 		return
 
+	# Iterate through each mesh instance
 	for mesh_instance: MeshInstance3D in mesh_instance_list:
 		var mesh: Mesh = mesh_instance.mesh
 
+		# Skip if mesh is invalid
 		if !is_instance_valid(mesh):
 			continue
 
+		# Loop through all surfaces of the mesh
 		for idx: int in range(mesh.get_surface_count()):
+			# Duplicate the material so we don't modify the original
 			var material: Material = mesh.surface_get_material(idx).duplicate(true) as Material
 
 			if !is_instance_valid(material):
 				material = null
 				continue
-
+			
+			# If this material hasn't been processed yet
 			if !extracted_materials.has(material.resource_name):
 				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), material.resource_name]
-
+				
+				# Save the material only if it doesn't already exist
 				if !FileAccess.file_exists(material_path):
 					ResourceSaver.save(material, material_path)
-
+			
+				# Updated processed materials 
+				# Store the material name and its saved path
 				extracted_materials[material.resource_name] = material_path
 
 			material = null
 
+# Loads a scene file and returns all MeshInstance3D nodes found within it.
 func _get_mesh_instances_from_scene(file_path: String) -> Array[MeshInstance3D]:
+	# Load the scene without using cache (ensures fresh data)
 	var packed_scene: PackedScene = ResourceLoader.load(
 		file_path,
 		"",
 		ResourceLoader.CacheMode.CACHE_MODE_IGNORE_DEEP,
 	) as PackedScene
 
+	# Return empty array if scene failed to load
 	if !is_instance_valid(packed_scene):
 		return []
 
+	# Instantiate the scene into a node tree
 	var node_instance: Node = packed_scene.instantiate()
 
+	# Return empty array if instantiation failed
 	if !is_instance_valid(node_instance):
 		return []
 
 	var mesh_list: Array[MeshInstance3D] = []
 
+	# Recursively find all MeshInstance3D nodes in the scene
 	for node: Node in node_instance.find_children("*", "MeshInstance3D", true, true):
 		if node is MeshInstance3D:
 			mesh_list.append(node as MeshInstance3D)
 
 	return mesh_list
 
+# Updates a .import file to replace embedded materials with external ones.
+# Uses previously extracted materials and assigns them via subresource settings.
 func _replace_materials_from_file(file_path: String) -> void:
 	var import_path: String = "%s.import" % [file_path]
 	var import_file: ConfigFile = _open_import_file(import_path)
 
+	# Retrieve existing subresource data (or create empty dictionary)
 	var subresources: Dictionary = import_file.get_value(
 		"params",
 		"_subresources",
@@ -347,12 +377,15 @@ func _replace_materials_from_file(file_path: String) -> void:
 	if !subresources.has("materials"):
 		subresources["materials"] = { }
 
+	# Loop through all extracted materials
 	for material_name: String in extracted_materials.keys() as Array[String]:
+		# Assign each material to use an external resource path
 		subresources["materials"][material_name] = {
 			"use_external/enabled": true,
 			"use_external/path": extracted_materials[material_name],
 		}
 
+	# Save updated subresource configuration back into the import file
 	import_file.set_value("params", "_subresources", subresources)
 	import_file.save(import_path)
 #endregion
