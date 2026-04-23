@@ -174,6 +174,9 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 			print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Gridmap Generation ---[/color]\n")
 			_generate_gridmap_resources(pack_name)
 		
+		print_rich("\n[color=green][b][KayKit Import Helper][/b] --- Fixing Texture Compression Modes ---[/color]\n")
+		_fix_texture_compression_modes(pack_name)
+		
 		# Remove the selected folder path (cleans up filesystem after processing files)
 		DirAccess.remove_absolute(selected_folder_path)
 			
@@ -368,6 +371,20 @@ func _generate_gridmap_resources(pack_name: String) -> void:
 	var clean_pack_name = pack_name.trim_suffix("/")
 	var save_path: String = MESH_LIBS_OUTPUT_DIRECTORY_PATH.path_join(pack_name) + clean_pack_name + ".tscn"
 	ResourceSaver.save(packed, save_path)
+
+func _fix_texture_compression_modes(pack_name: String) -> void:
+	var new_texture_paths = _get_files(TEXTURES_OUTPUT_DIRECTORY_PATH.path_join(pack_name), ["png"])
+	
+	for idx: int in new_texture_paths.size():
+		var new_texture_path: String = new_texture_paths[idx]
+		var import_path: String = "%s.import" % [new_texture_path]
+		var import_file: ConfigFile = _open_import_file(import_path)
+		
+		# Ensure all textures get set to lossless compression to prevent banding
+		import_file.set_value("params", "compress/mode", 0)
+		import_file.save(import_path)
+	
+		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully updated compression mode of %s[/color]" % [idx + 1, new_texture_paths.size(), new_texture_path])
 
 #region Material Extraction & Replacement
 # Extracts all materials from meshes in a scene file and saves them as external resources.
