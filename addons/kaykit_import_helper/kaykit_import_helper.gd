@@ -337,14 +337,19 @@ func _generate_gridmap_resources(pack_name: String) -> void:
 		instance.owner = root
 			
 		var child = instance.get_child(0)
-		
+
 		# Detach child from instance
 		instance.remove_child(child)
 		child.owner = null
-			
+
 		# Add child directly to your root
 		root.add_child(child)
 		child.owner = root
+		
+		# TODO: Could be made recursive, but for now ensure that any grandchildren get added correctly
+		for grandchild in child.get_children():
+			grandchild.owner = root
+			grandchild.name = grandchild.name.to_pascal_case()
 		
 		var x = idx % columns
 		var z = idx / columns
@@ -355,7 +360,11 @@ func _generate_gridmap_resources(pack_name: String) -> void:
 		child.name = child.name.to_pascal_case()
 		
 		# Generate collisions
-		child.create_convex_collision()
+		child.create_trimesh_collision()
+		
+		for grandchild in child.get_children():
+			if grandchild is MeshInstance3D:
+				grandchild.create_trimesh_collision()
 		
 		# Remove the original root node
 		instance.owner = null
@@ -416,7 +425,7 @@ func _extract_materials_from_file(file_path: String, pack_name: String) -> void:
 			
 			# If this material hasn't been processed yet
 			if !extracted_materials.has(material.resource_name):
-				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), material.resource_name]
+				var material_path: String = "%s%s.tres" % [MATERIALS_OUTPUT_DIRECTORY_PATH.path_join(pack_name), material.resource_name.to_snake_case()]
 				
 				# Save the material only if it doesn't already exist
 				if !FileAccess.file_exists(material_path):
@@ -615,6 +624,7 @@ func _move_files(file_paths: Array, target_dir: String, move_import: bool = fals
 			continue
 
 		var file_name = file_path.get_file()
+
 		var new_file_path: String = target_dir.path_join(file_name)
 
 		# Move main file
