@@ -178,7 +178,7 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 		_fix_texture_compression_modes(pack_name)
 		
 		# Remove the selected folder path (cleans up filesystem after processing files)
-		DirAccess.remove_absolute(selected_folder_path)
+		_remove_directory_recursive(selected_folder_path)
 			
 	await _refresh_filesystem()
 		
@@ -281,7 +281,7 @@ func _fix_gltf_texture_uris(model_paths: Array, pack_name: String) -> void:
 					# Rebuild the image path to point to the correct texture within the selected asset pack
 					img["uri"] = "../../textures/" + pack_name + filename
 			
-		# Convert modified JSON back to formatted string        
+		# Convert modified JSON back to formatted stsring        
 		var new_text: String = JSON.stringify(json, "\t")
 		# Open file for writing (overwrite existing content)
 		var out: FileAccess = FileAccess.open(model_path, FileAccess.WRITE)
@@ -397,6 +397,30 @@ func _fix_texture_compression_modes(pack_name: String) -> void:
 		import_file.save(import_path)
 	
 		print_rich("[color=green][b][KayKit Import Helper][/b] [%d/%d] Successfully updated compression mode of %s[/color]" % [idx + 1, new_texture_paths.size(), new_texture_path])
+
+func _remove_directory_recursive(path: String) -> void:
+	var dir := DirAccess.open(path)
+	
+	if dir == null:
+		return
+
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+
+	while file_name != "":
+		var full_path := path.path_join(file_name)
+
+		if dir.current_is_dir():
+			_remove_directory_recursive(full_path)
+		else:
+			DirAccess.remove_absolute(full_path)
+
+		file_name = dir.get_next()
+
+	dir.list_dir_end()
+	dir = null
+
+	DirAccess.remove_absolute(path)
 
 #region Material Extraction & Replacement
 # Extracts all materials from meshes in a scene file and saves them as external resources.
