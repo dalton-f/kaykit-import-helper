@@ -141,7 +141,7 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	var selected_folder_paths: Array[String] = _get_selected_folders()
 
 	# Build the output directories if they don't already exist
-	await _build_output_directories(selected_folder_paths)
+	await _build_output_directories(selected_folder_paths, settings)
 	
 	# Loop over each selected folder to process them individually
 	for selected_folder_path in selected_folder_paths:
@@ -185,13 +185,16 @@ func _handle_reimport_request(settings: Dictionary[String, bool]) -> void:
 	print_rich("\n[color=green][b][KayKit Import Helper][/b] Reimport successfully completed with settings: %s [/color]" % settings)
 
 # Creates output directory structure for selected asset folders.
-func _build_output_directories(selected_folder_paths: Array[String]) -> void:
+func _build_output_directories(selected_folder_paths: Array[String], settings: Dictionary[String, bool]) -> void:
 	var base_directories = [
 		MATERIALS_OUTPUT_DIRECTORY_PATH,
 		TEXTURES_OUTPUT_DIRECTORY_PATH,
 		MODELS_OUTPUT_DIRECTORY_PATH,
-		MESH_LIBS_OUTPUT_DIRECTORY_PATH
 	]
+
+	# Only create mesh library directories when generating a GridMap.
+	if settings.get("generate_gridmap", false):
+		base_directories.append(MESH_LIBS_OUTPUT_DIRECTORY_PATH)
 
 	# Loop through each base directory
 	for base_dir in base_directories:
